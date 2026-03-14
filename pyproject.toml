@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lark-bash"
+version = "0.1.0"
+description = "Bash parser built with Lark LALR for AST/SAST workflows"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "lark>=1.1.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["tests/fixtures/tree-sitter-bash"]
