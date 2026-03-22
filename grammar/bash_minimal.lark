@@ -8,25 +8,30 @@ and_or: pipeline ((AND_IF | OR_IF) pipeline)*
 pipeline: BANG? command (PIPE command)*
 
 ?command: function_definition
+        | bash_function_definition
         | compound_command redirect*
         | simple_command
 
 simple_command: command_part+
 command_part: assignment_word | redirect | word
-assignment_word: ASSIGNMENT_WORD
+assignment_word: ASSIGNMENT_WORD | ARRAY_ASSIGNMENT_WORD
 
 ?compound_command: brace_group
                  | subshell
                  | for_clause
+                 | select_clause
                  | while_clause
                  | until_clause
                  | if_clause
                  | case_clause
+                 | test_clause
+                 | arithmetic_command
 
 brace_group: LBRACE body RBRACE
 subshell: LPAR body RPAR
 
 for_clause: FOR name for_words? SEP DO clause_body DONE
+select_clause: SELECT name for_words? SEP DO clause_body DONE
 for_words: IN wordlist?
 wordlist: word+
 
@@ -37,17 +42,22 @@ if_clause: IF clause_body THEN clause_body elif_clause* else_clause? FI
 elif_clause: ELIF clause_body THEN clause_body
 else_clause: ELSE clause_body
 
+test_clause: DBL_LBRACK TEST_BODY? DBL_RBRACK
+arithmetic_command: DBL_LPAR ARITH_CMD_BODY? DBL_RPAR
+
 case_clause: CASE word IN case_item* ESAC
 case_item: pattern_list RPAR case_body DSEMI
 case_body: body_part*
 pattern_list: word (PIPE word)*
 
 function_definition: FUNC_NAME function_body
+bash_function_definition: FUNCTION name function_body
 function_body: compound_command redirect*
 name: NAME
 
 redirect: IO_NUMBER? REDIR_OP word?
-word: SUBSHELL_WORD
+word: EXPANSION_WORD
+    | SUBSHELL_WORD
     | WORD
 
 AND_IF: "&&"
@@ -59,8 +69,13 @@ LBRACE: "{"
 RBRACE: "}"
 LPAR: "("
 RPAR: ")"
+DBL_LBRACK: "[["
+DBL_RBRACK: "]]"
+DBL_LPAR: "(("
+DBL_RPAR: "))"
 
 FOR: "for"
+SELECT: "select"
 WHILE: "while"
 UNTIL: "until"
 DO: "do"
@@ -73,15 +88,20 @@ FI: "fi"
 CASE: "case"
 IN: "in"
 ESAC: "esac"
+FUNCTION: "function"
 
 SEP: /(?:;|&)(?:\\\n|\n)*|(?:\\\n|\n)+/
 IO_NUMBER: /[0-9]+/
 FUNC_NAME.10: /[A-Za-z_][A-Za-z0-9_]*\(\)/
 NAME: /[A-Za-z_][A-Za-z0-9_]*/
-ASSIGNMENT_WORD: /[A-Za-z_][A-Za-z0-9_]*=(?:[^\s;|&<>(){}\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')*/
+ASSIGNMENT_WORD: /[A-Za-z_][A-Za-z0-9_]*=(?:[^\s;|&<>(){}\[\]\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')*/
+ARRAY_ASSIGNMENT_WORD.11: /(?:[A-Za-z_][A-Za-z0-9_]*\+=\([^\n]*\)|[A-Za-z_][A-Za-z0-9_]*=\([^\n]*\))/
 REDIR_OP: "<<-" | "<<" | ">|" | ">>" | "<&" | ">&" | "<>" | "<" | ">"
+EXPANSION_WORD.11: /\$\{[^\n]*?\}|\$\(\([^\n]*?\)\)/
 SUBSHELL_WORD.10: /\$\([^\n]*?\)|`[^\n]*?`|<\([^\n]*?\)|>\([^\n]*?\)/
-WORD: /(?:[^\s;|&<>(){}#\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*'|\$\{[^\n]*?\})+/
+WORD: /(?:[^\s;|&<>(){}#\[\]\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')+/
+TEST_BODY: /(?:[^\]]|\](?!\]))+/
+ARITH_CMD_BODY: /(?:[^)]|\)(?!\)))+/
 COMMENT: /#[^\n]*/
 
 %ignore /[\t \f\r]+/

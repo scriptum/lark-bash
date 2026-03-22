@@ -60,3 +60,34 @@ def test_tree_contains_posix_compound_nodes(parser: BashParser) -> None:
 
     case_tree = parser.parse("case \"$x\" in a|b) echo 1 ;; esac\n").tree
     assert any(case_tree.find_pred(lambda node: node.data == "case_clause"))
+
+
+def test_bash_extensions_parse_and_extract(parser: BashParser) -> None:
+    result = parser.parse("function greet { echo hi; }\ngreet\n")
+    commands = extract_commands(result)
+    assert [command.name for command in commands] == ["echo", "greet"]
+
+
+def test_parameter_and_arithmetic_expansions_are_words(parser: BashParser) -> None:
+    result = parser.parse("echo ${HOME:-/tmp} $((1 + 2))\n")
+    commands = extract_commands(result)
+    assert len(commands) == 1
+    assert commands[0].name == "echo"
+    assert commands[0].args == ["${HOME:-/tmp}", "$((1 + 2))"]
+
+
+def test_array_assignment_word_is_extracted_as_assignment(parser: BashParser) -> None:
+    result = parser.parse("arr+=(three)\n")
+    commands = extract_commands(result)
+    assert len(commands) == 1
+    assert commands[0].name is None
+    assert commands[0].assignments == ["arr+=(three)"]
+
+
+def test_bash_compound_nodes_exist(parser: BashParser) -> None:
+    tree = parser.parse("if [[ -n $x ]]; then ((count++)); fi\n").tree
+    assert any(tree.find_pred(lambda node: node.data == "test_clause"))
+    assert any(tree.find_pred(lambda node: node.data == "arithmetic_command"))
+
+    select_tree = parser.parse("select item in a b; do echo \"$item\"; done\n").tree
+    assert any(select_tree.find_pred(lambda node: node.data == "select_clause"))

@@ -46,7 +46,7 @@ class CommandRecord:
 
 
 class CommandExtractor(Visitor):
-    ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+    ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\+=|=).*$")
 
     def __init__(self, result: ParseResult) -> None:
         self.result = result
