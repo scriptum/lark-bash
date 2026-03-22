@@ -1,0 +1,22 @@
+start: fragment*
+
+?fragment: heredoc | text | sq | dq
+
+heredoc: HEREDOC_OP heredoc_delimiter
+heredoc_delimiter: DQ_DELIM | SQ_DELIM | BARE_DELIM
+
+text: TEXT
+sq: SQUOTE SQUOTE
+  | SQUOTE SQ_TEXT SQUOTE
+dq: DQUOTE DQUOTE
+  | DQUOTE DQ_TEXT DQUOTE
+
+HEREDOC_OP: "<<-" | "<<"
+DQ_DELIM: /"[^"]+"/
+SQ_DELIM: /'[^']+'/
+BARE_DELIM: /[A-Za-z_][A-Za-z0-9_]*/
+TEXT: /(?:[^<'"\n]+|<(?!<))+/
+SQUOTE: "'"
+DQUOTE: "\""
+SQ_TEXT: /[^']+/
+DQ_TEXT: /(?:[^"\\]|\\.)+/

@@ -1,0 +1,22 @@
+start: part+
+
+?part: param_expansion
+     | arithmetic_expansion
+     | command_substitution
+     | process_substitution
+     | quoted_literal
+     | literal
+
+param_expansion: PARAM_EXPANSION
+arithmetic_expansion: ARITHMETIC_EXPANSION
+command_substitution: COMMAND_SUBSTITUTION
+process_substitution: PROCESS_SUBSTITUTION
+quoted_literal: QUOTED_LITERAL
+literal: LITERAL
+
+PARAM_EXPANSION.20: /\$\{[^\n]*?\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[-!$?@#*])/
+ARITHMETIC_EXPANSION.21: /\$\(\([^\n]*?\)\)/
+COMMAND_SUBSTITUTION.20: /\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`/
+PROCESS_SUBSTITUTION.20: /<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\)/
+QUOTED_LITERAL.15: /"(?:[^"\\]|\\.)*"|'[^']*'/
+LITERAL: /(?:[^\s\\"'$`<>()]+|\\.)+/

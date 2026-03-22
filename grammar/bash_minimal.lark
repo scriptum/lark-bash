@@ -1,0 +1,132 @@
+start: body
+body: body_part*
+body_part: SEP | and_or SEP?
+
+clause_body: body_part+
+
+and_or: pipeline ((AND_IF | OR_IF) pipeline)*
+pipeline: BANG? command (PIPE command)*
+
+command: function_definition
+       | bash_function_definition
+       | compound_command redirect*
+       | keyword_construct
+       | simple_command
+
+simple_command: command_part+
+command_part: assignment_word | redirect | word
+assignment_word: ASSIGNMENT_WORD | ARRAY_ASSIGNMENT_WORD
+
+compound_command: brace_group
+                | subshell
+
+keyword_construct: for_clause
+                 | select_clause
+                 | while_clause
+                 | until_clause
+                 | if_clause
+                 | case_clause
+                 | test_clause
+                 | posix_test_clause
+                 | arithmetic_command
+
+brace_group: LBRACE body RBRACE
+subshell: LPAR body RPAR
+
+for_clause: FOR name for_words? SEP DO clause_body DONE
+select_clause: SELECT name for_words? SEP DO clause_body DONE
+for_words: IN wordlist?
+wordlist: word+
+
+while_clause: WHILE clause_body DO clause_body DONE
+until_clause: UNTIL clause_body DO clause_body DONE
+
+if_clause: IF clause_body THEN clause_body elif_clause* else_clause? FI
+elif_clause: ELIF clause_body THEN clause_body
+else_clause: ELSE clause_body
+
+test_clause: DBL_LBRACK test_expression? DBL_RBRACK
+posix_test_clause: SGL_LBRACK test_expression? SGL_RBRACK
+test_expression: test_term+
+test_term: word
+         | AND_IF
+         | OR_IF
+         | BANG
+         | LPAR test_expression RPAR
+
+arithmetic_command: DBL_LPAR arithmetic_expression? DBL_RPAR
+arithmetic_expression: arithmetic_term+
+arithmetic_term: word
+               | LPAR arithmetic_expression RPAR
+               | BANG
+               | AND_IF
+               | OR_IF
+               | PIPE
+               | REDIR_OP
+
+case_clause: CASE word IN case_item? case_item_cont* ESAC
+case_item: pattern_list RPAR case_body DSEMI
+case_item_cont: SEP+ pattern_list RPAR case_body DSEMI
+case_body: body_part*
+pattern_list: word (PIPE word)*
+
+function_definition: FUNC_NAME function_body
+bash_function_definition: FUNCTION name function_body
+function_body: compound_command redirect*
+name: NAME
+
+redirect: fd_redirect | simple_redirect
+fd_redirect: IO_NUMBER REDIR_OP word?
+simple_redirect: REDIR_OP word?
+word: EXPANSION_WORD
+    | SUBSHELL_WORD
+    | WORD
+    | IO_NUMBER
+
+AND_IF: "&&"
+OR_IF: "||"
+PIPE: "|"
+BANG: "!"
+DSEMI.10: ";;"
+LBRACE: "{"
+RBRACE: "}"
+LPAR: "("
+RPAR: ")"
+DBL_LBRACK: "[["
+DBL_RBRACK: "]]"
+SGL_LBRACK: "["
+SGL_RBRACK: "]"
+DBL_LPAR: "(("
+DBL_RPAR: "))"
+
+FOR: "for"
+SELECT: "select"
+WHILE: "while"
+UNTIL: "until"
+DO: "do"
+DONE: "done"
+IF: "if"
+THEN: "then"
+ELIF: "elif"
+ELSE: "else"
+FI: "fi"
+CASE: "case"
+IN: "in"
+ESAC: "esac"
+FUNCTION: "function"
+
+SEP: /(?:;|&)\n*|\n+/
+IO_NUMBER.20: /[0-9]+/
+FUNC_NAME.10: /[A-Za-z_][A-Za-z0-9_]*\(\)/
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+ASSIGNMENT_WORD: /[A-Za-z_][A-Za-z0-9_]*=(?:[^\s;|&<>(){}#\[\]\\$`"']|\\.|"(?:[^"\\]|\\.)*"|'[^']*'|\$\{[^\n]*?\}|\$\(\([^\n]*?\)\)|\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`|<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\)|\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[-!$?@#*]))*/
+ARRAY_ASSIGNMENT_WORD.21: /(?:[A-Za-z_][A-Za-z0-9_]*\+=\([^\n]*\)|[A-Za-z_][A-Za-z0-9_]*=\([^\n]*\))/
+REDIR_OP.20: "<<<" | "<<-" | "<<" | ">|" | ">>" | "<&" | ">&" | "<>" | "<" | ">"
+EXPANSION_WORD.11: /\$\{[^\n]*?\}|\$\(\([^\n]*?\)\)|\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[-!$?@#*])/
+SUBSHELL_WORD.30: /\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`|<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\)/
+WORD: /(?:[^\s;|&<>(){}#\[\]\\$`"']|\\.|"(?:[^"\\]|\\.)*"|'[^']*')+/
+COMMENT: /#[^\n]*/
+
+%ignore /\\\n/
+%ignore /[\t \f\r]+/
+%ignore COMMENT
