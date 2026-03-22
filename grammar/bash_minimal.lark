@@ -55,10 +55,13 @@ bash_function_definition: FUNCTION name function_body
 function_body: compound_command redirect*
 name: NAME
 
-redirect: IO_NUMBER? REDIR_OP word?
+redirect: fd_redirect | simple_redirect
+fd_redirect: IO_NUMBER REDIR_OP word?
+simple_redirect: REDIR_OP word?
 word: EXPANSION_WORD
     | SUBSHELL_WORD
     | WORD
+    | IO_NUMBER
 
 AND_IF: "&&"
 OR_IF: "||"
@@ -91,17 +94,17 @@ ESAC: "esac"
 FUNCTION: "function"
 
 SEP: /(?:;|&)(?:\\\n|\n)*|(?:\\\n|\n)+/
-IO_NUMBER: /[0-9]+/
+IO_NUMBER.20: /[0-9]+/
 FUNC_NAME.10: /[A-Za-z_][A-Za-z0-9_]*\(\)/
 NAME: /[A-Za-z_][A-Za-z0-9_]*/
 ASSIGNMENT_WORD: /[A-Za-z_][A-Za-z0-9_]*=(?:[^\s;|&<>(){}#\[\]\\$`"']|\\.|"(?:[^"\\]|\\.)*"|'[^']*'|\$\{[^\n]*?\}|\$\(\([^\n]*?\)\)|\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`|<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\))*/
-ARRAY_ASSIGNMENT_WORD.11: /(?:[A-Za-z_][A-Za-z0-9_]*\+=\([^\n]*\)|[A-Za-z_][A-Za-z0-9_]*=\([^\n]*\))/
-REDIR_OP: "<<<" | "<<-" | "<<" | ">|" | ">>" | "<&" | ">&" | "<>" | "<" | ">"
+ARRAY_ASSIGNMENT_WORD.21: /(?:[A-Za-z_][A-Za-z0-9_]*\+=\([^\n]*\)|[A-Za-z_][A-Za-z0-9_]*=\([^\n]*\))/
+REDIR_OP.20: "<<<" | "<<-" | "<<" | ">|" | ">>" | "<&" | ">&" | "<>" | "<" | ">"
 EXPANSION_WORD.11: /\$\{[^\n]*?\}|\$\(\([^\n]*?\)\)/
-SUBSHELL_WORD.10: /\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`|<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\)/
-WORD: /(?:[^\s;|&<>(){}#\[\]\\$`"']|\\.|"(?:[^"\\]|\\.)*"|'[^']*')+/
-TEST_BODY: /(?:[^\]]|\](?!\]))+/
-ARITH_CMD_BODY: /(?:[^)]|\)(?!\)))+/
+SUBSHELL_WORD.30: /\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`|<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\)/
+WORD: /(?:[^\s;|&<>(){}#\\$`"']|\\.|"(?:[^"\\]|\\.)*"|'[^']*')+/
+TEST_BODY.1: /(?:[^\]]|\](?!\]))+/ 
+ARITH_CMD_BODY.1: /(?:[^)]|\)(?!\)))+/
 COMMENT: /#[^\n]*/
 
 %ignore /[\t \f\r]+/

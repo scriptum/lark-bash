@@ -19,8 +19,37 @@ def main() -> None:
     args = cli.parse_args()
 
     parsed = BashParser().parse_file(args.path)
+    commands = extract_commands(parsed)
+
+    print("=== Parse Tree ===")
     print(parsed.tree.pretty())
-    print(json.dumps([command.to_dict() for command in extract_commands(parsed)], indent=2))
+    print("=== Commands ===")
+    print(json.dumps([command.to_dict() for command in commands], indent=2))
+    print("=== Word Parts ===")
+    word_parts = [
+        {
+            "command_id": command.command_id,
+            "name": command.name,
+            "args_structured": [[part.to_dict() for part in arg] for arg in command.args_structured],
+            "args_expanded": [[record.to_dict() for record in arg] for arg in command.args_expanded],
+        }
+        for command in commands
+    ]
+    print(json.dumps(word_parts, indent=2))
+    print("=== Subparses ===")
+    print(
+        json.dumps(
+            [
+                {
+                    "command_id": command.command_id,
+                    "name": command.name,
+                    "subparses": [record.to_dict() for record in command.subparses],
+                }
+                for command in commands
+            ],
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

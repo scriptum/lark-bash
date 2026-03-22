@@ -13,6 +13,7 @@ HEREDOC_SCAN_GRAMMAR_PATH = Path(__file__).parent / "grammar" / "heredoc_scan.la
 
 @dataclass(slots=True)
 class HereDocSource:
+    heredoc_id: int
     operator: str
     delimiter: str
     body: str
@@ -32,10 +33,13 @@ class ParseResult:
     source_text: str = ""
     parsed_text: str = ""
     heredocs: list[HereDocSource] = field(default_factory=list)
+    heredoc_map: dict[int, HereDocSource] = field(default_factory=dict)
+    redirect_heredoc_map: dict[tuple[int | None, int | None, int | None, int | None], int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class PendingHereDoc:
+    heredoc_id: int
     operator: str
     delimiter: str
     quoted: bool
@@ -44,6 +48,10 @@ class PendingHereDoc:
 
 
 class HereDocScanTransformer(Transformer):
+    def __init__(self, next_heredoc_id: int) -> None:
+        super().__init__()
+        self._next_heredoc_id = next_heredoc_id
+
     def start(self, children: list[object]) -> list[PendingHereDoc]:
         return [child for child in children if isinstance(child, PendingHereDoc)]
 
@@ -61,7 +69,16 @@ class HereDocScanTransformer(Transformer):
                 if len(delimiter) >= 2 and delimiter[0] == delimiter[-1] and delimiter[0] in {'"', "'"}:
                     quoted = True
                     delimiter = delimiter[1:-1]
-        return PendingHereDoc(operator=operator, delimiter=delimiter, quoted=quoted, redirect_line=0, redirect_column=redirect_column)
+        pending = PendingHereDoc(
+            heredoc_id=self._next_heredoc_id,
+            operator=operator,
+            delimiter=delimiter,
+            quoted=quoted,
+            redirect_line=0,
+            redirect_column=redirect_column,
+        )
+        self._next_heredoc_id += 1
+        return pending
 
 
 class BashParser:
@@ -87,6 +104,7 @@ class BashParser:
         started = perf_counter()
         tree = self._parser.parse(prepared["parsed_text"])
         elapsed_ms = (perf_counter() - started) * 1000
+        redirect_heredoc_map = self._build_redirect_heredoc_map(tree, prepared["heredocs"])
         return ParseResult(
             tree=tree,
             elapsed_ms=elapsed_ms,
@@ -94,6 +112,8 @@ class BashParser:
             source_text=text,
             parsed_text=prepared["parsed_text"],
             heredocs=prepared["heredocs"],
+            heredoc_map={heredoc.heredoc_id: heredoc for heredoc in prepared["heredocs"]},
+            redirect_heredoc_map=redirect_heredoc_map,
         )
 
     def parse_file(self, path: str | Path) -> ParseResult:
@@ -106,6 +126,7 @@ class BashParser:
         heredocs: list[HereDocSource] = []
         pending: list[PendingHereDoc] = []
         index = 0
+        next_heredoc_id = 1
         while index < len(lines):
             line = lines[index]
             if pending:
@@ -119,6 +140,7 @@ class BashParser:
                     if compare_value == current_pending.delimiter:
                         heredocs.append(
                             HereDocSource(
+                                heredoc_id=current_pending.heredoc_id,
                                 operator=current_pending.operator,
                                 delimiter=current_pending.delimiter,
                                 body="".join(body_lines),
@@ -140,19 +162,49 @@ class BashParser:
                 continue
 
             output.append(line)
-            scanned = self._scan_heredocs(line)
+            scanned, next_heredoc_id = self._scan_heredocs(line, next_heredoc_id)
             for item in scanned:
                 item.redirect_line = index + 1
             pending.extend(scanned)
             index += 1
         return {"parsed_text": "".join(output), "heredocs": heredocs}
 
-    def _scan_heredocs(self, line: str) -> list[PendingHereDoc]:
+    def _scan_heredocs(self, line: str, next_heredoc_id: int) -> tuple[list[PendingHereDoc], int]:
         try:
             tree = self._heredoc_scan_parser.parse(line.rstrip("\n"))
         except UnexpectedInput:
-            return []
-        return HereDocScanTransformer().transform(tree)
+            return [], next_heredoc_id
+        transformer = HereDocScanTransformer(next_heredoc_id)
+        pending = transformer.transform(tree)
+        return pending, transformer._next_heredoc_id
+
+    def _build_redirect_heredoc_map(
+        self,
+        tree: Tree,
+        heredocs: list[HereDocSource],
+    ) -> dict[tuple[int | None, int | None, int | None, int | None], int]:
+        heredoc_redirects: list[Tree] = []
+        for redirect in tree.find_data("redirect"):
+            operator = self._redirect_operator(redirect)
+            if operator in {"<<", "<<-"}:
+                heredoc_redirects.append(redirect)
+        mapping: dict[tuple[int | None, int | None, int | None, int | None], int] = {}
+        for redirect, heredoc in zip(heredoc_redirects, heredocs):
+            key = (
+                getattr(redirect.meta, "line", None),
+                getattr(redirect.meta, "column", None),
+                getattr(redirect.meta, "end_line", None),
+                getattr(redirect.meta, "end_column", None),
+            )
+            mapping[key] = heredoc.heredoc_id
+        return mapping
+
+    def _redirect_operator(self, redirect: Tree) -> str | None:
+        inner = redirect.children[0] if redirect.children and isinstance(redirect.children[0], Tree) else redirect
+        for child in inner.children:
+            if isinstance(child, Token) and child.type == "REDIR_OP":
+                return child.value
+        return None
 
 
 def main() -> None:

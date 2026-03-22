@@ -25,13 +25,18 @@ class RedirectRecord:
     fd: str | None
     target: str | None
     kind: Literal["file", "fd_dup", "heredoc", "herestring", "process_substitution"]
+    heredoc_id: int | None = None
 
 
 @dataclass(slots=True)
 class CommandRecord:
+    command_id: int
+    parent_command_id: int | None
+    type: Literal["external", "builtin", "function_call", "assignment_only", "redirect_only"]
     name: str | None
     args: list[str]
     args_structured: list[list[WordPart]]
+    args_expanded: list[list[SubParseRecord]]
     redirects: list[RedirectRecord]
     assignments: list[str]
     wrappers: list[str]
@@ -43,15 +48,20 @@ class CommandRecord:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "command_id": self.command_id,
+            "parent_command_id": self.parent_command_id,
+            "type": self.type,
             "name": self.name,
             "args": self.args,
             "args_structured": [[part.to_dict() for part in arg] for arg in self.args_structured],
+            "args_expanded": [[record.to_dict() for record in arg] for arg in self.args_expanded],
             "redirects": [
                 {
                     "operator": redirect.operator,
                     "fd": redirect.fd,
                     "target": redirect.target,
                     "kind": redirect.kind,
+                    "heredoc_id": redirect.heredoc_id,
                 }
                 for redirect in self.redirects
             ],
@@ -69,62 +79,56 @@ class CommandRecord:
 class WordValue:
     raw: str
     parts: list[WordPart]
+    subparses: list[SubParseRecord]
 
 
 class CommandExtractor(Visitor):
-    def __init__(self, result: ParseResult) -> None:
+    def __init__(self, result: ParseResult, parent_command_id: int | None = None) -> None:
         self.result = result
+        self.parent_command_id = parent_command_id
         self.commands: list[CommandRecord] = []
         self._wrappers: list[str] = []
         self._subparsers = SubParserManager()
-        self._heredocs = sorted(result.heredocs, key=lambda heredoc: (heredoc.redirect_line, heredoc.redirect_column))
+        self._next_command_id = 1
+        self._word_parts_fallback = self._subparsers
 
     def simple_command(self, tree: Tree) -> None:
+        command_id = self._next_command_id
+        self._next_command_id += 1
+
         words: list[WordValue] = []
         assignments: list[str] = []
         redirects: list[RedirectRecord] = []
         subparses: list[SubParseRecord] = []
+        args_expanded: list[list[SubParseRecord]] = []
 
-        parts = [child for child in tree.children if isinstance(child, Tree)]
-        index = 0
-        while index < len(parts):
-            part = parts[index]
+        previous_word_node: Tree | None = None
+        for part in [child for child in tree.children if isinstance(child, Tree)]:
             payload = self._unwrap_command_part(part)
             if payload is None:
-                index += 1
                 continue
 
             kind, node = payload
             if kind == "assignment":
-                value = self._flatten_tree(node)
-                assignments.append(value)
-                subparses.extend(self._subparses_for_node(value, node))
+                previous_word_node = None
+                value = self._extract_assignment_value(node, command_id)
+                assignments.append(value.raw)
+                subparses.extend(value.subparses)
             elif kind == "word":
-                value = self._extract_word_value(node)
-                if (
-                    value.raw.isdigit()
-                    and index + 1 < len(parts)
-                    and self._unwrap_command_part(parts[index + 1]) is not None
-                    and self._unwrap_command_part(parts[index + 1])[0] == "redirect"
-                    and self._is_adjacent(node, self._unwrap_command_part(parts[index + 1])[1])
-                ):
-                    redirect_node = self._unwrap_command_part(parts[index + 1])[1]
-                    redirects.append(self._flatten_redirect(redirect_node, fd_override=value.raw))
-                    subparses.extend(self._subparses_for_redirect(redirect_node))
-                    index += 2
-                    continue
-                if words and self._is_adjacent(parts[index - 1], node):
+                value = self._extract_word_value(node, command_id)
+                if words and self._is_adjacent(previous_word_node, node):
                     words[-1].raw += value.raw
                     words[-1].parts.extend(value.parts)
-                    subparses.extend(self._subparses_for_node(value.raw, node))
-                    index += 1
-                    continue
-                words.append(value)
-                subparses.extend(self._subparses_for_node(value.raw, node))
+                    words[-1].subparses.extend(value.subparses)
+                else:
+                    words.append(value)
+                subparses.extend(value.subparses)
+                previous_word_node = node
             elif kind == "redirect":
-                redirects.append(self._flatten_redirect(node))
-                subparses.extend(self._subparses_for_redirect(node))
-            index += 1
+                previous_word_node = None
+                redirect_record, redirect_subparses = self._flatten_redirect(node, command_id)
+                redirects.append(redirect_record)
+                subparses.extend(redirect_subparses)
 
         if not words and not assignments and not redirects:
             return
@@ -132,20 +136,23 @@ class CommandExtractor(Visitor):
         command_name = words[0].raw if words else None
         args = [word.raw for word in words[1:]] if len(words) > 1 else []
         args_structured = [word.parts for word in words[1:]] if len(words) > 1 else []
+        args_expanded = [word.subparses for word in words[1:]] if len(words) > 1 else []
         meta = tree.meta
-        pipeline_id = None
-        pipeline_index = None
 
         self.commands.append(
             CommandRecord(
+                command_id=command_id,
+                parent_command_id=self.parent_command_id,
+                type=self._classify_command(command_name, assignments, redirects),
                 name=command_name,
                 args=args,
                 args_structured=args_structured,
+                args_expanded=args_expanded,
                 redirects=redirects,
                 assignments=assignments,
                 wrappers=list(self._wrappers),
-                pipeline_id=pipeline_id,
-                pipeline_index=pipeline_index,
+                pipeline_id=None,
+                pipeline_index=None,
                 source_span={
                     "start_line": getattr(meta, "line", None),
                     "start_column": getattr(meta, "column", None),
@@ -170,33 +177,50 @@ class CommandExtractor(Visitor):
         if node.data == "command_part" and node.children and isinstance(node.children[0], Tree):
             node = node.children[0]
         if node.data == "assignment_word":
-            return "assignment", node
+            return "assignment", node.children[0] if node.children and isinstance(node.children[0], Tree) else node
         if node.data == "word":
             return "word", node
         if node.data == "redirect":
             return "redirect", node
         return None
 
-    def _flatten_redirect(self, tree: Tree, fd_override: str | None = None) -> RedirectRecord:
-        fd = fd_override
-        operator = None
+    def _extract_assignment_value(self, tree: Tree, command_id: int) -> WordValue:
+        return WordValue(
+            raw=self._flatten_tree(tree),
+            parts=self._word_parts_for_assignment(tree),
+            subparses=self._subparses_for_tree(tree, command_id),
+        )
+
+    def _flatten_redirect(self, tree: Tree, command_id: int) -> tuple[RedirectRecord, list[SubParseRecord]]:
+        inner = tree.children[0] if tree.children and isinstance(tree.children[0], Tree) else tree
+        fd = None
+        operator = ""
         target = None
         target_parts: list[WordPart] = []
-        for child in tree.children:
+        target_subparses: list[SubParseRecord] = []
+        for child in inner.children:
             if isinstance(child, Token) and child.type == "IO_NUMBER":
                 fd = child.value
             elif isinstance(child, Token) and child.type == "REDIR_OP":
                 operator = child.value
             elif isinstance(child, Tree) and child.data == "word":
-                value = self._extract_word_value(child)
+                value = self._extract_word_value(child, command_id)
                 target = value.raw
                 target_parts = value.parts
-        return RedirectRecord(
-            operator=operator or "",
+                target_subparses = value.subparses
+        heredoc_id = self.result.redirect_heredoc_map.get(self._node_span_key(tree))
+        record = RedirectRecord(
+            operator=operator,
             fd=fd,
             target=target,
-            kind=self._classify_redirect(operator or "", target, target_parts),
+            kind=self._classify_redirect(operator, target, target_parts),
+            heredoc_id=heredoc_id,
         )
+        records = list(target_subparses)
+        if heredoc_id is not None:
+            heredoc = self.result.heredoc_map[heredoc_id]
+            records.append(self._subparsers.build_heredoc_record(heredoc, parent_command_id=command_id))
+        return record, records
 
     def _classify_redirect(self, operator: str, target: str | None, target_parts: list[WordPart]) -> Literal["file", "fd_dup", "heredoc", "herestring", "process_substitution"]:
         if operator in {"<<", "<<-"}:
@@ -209,37 +233,38 @@ class CommandExtractor(Visitor):
             return "fd_dup"
         return "file"
 
-    def _extract_word_value(self, tree: Tree) -> WordValue:
-        raw = self._flatten_tree(tree)
-        parts = self._subparsers.extract_word_parts(raw)
-        return WordValue(raw=raw, parts=parts)
-
-    def _subparses_for_node(self, value: str, node: Tree) -> list[SubParseRecord]:
-        return self._subparsers.extract_for_text(
-            value,
-            start_line=getattr(node.meta, "line", None) or 1,
-            start_column=getattr(node.meta, "column", None) or 1,
+    def _extract_word_value(self, tree: Tree, command_id: int) -> WordValue:
+        return WordValue(
+            raw=self._flatten_tree(tree),
+            parts=self._word_parts_for_word(tree),
+            subparses=self._subparses_for_tree(tree, command_id),
         )
 
-    def _subparses_for_redirect(self, node: Tree) -> list[SubParseRecord]:
-        records: list[SubParseRecord] = []
-        operator = None
-        target_text = None
-        target_node = None
-        for child in node.children:
-            if isinstance(child, Token) and child.type == "REDIR_OP":
-                operator = child.value
-            elif isinstance(child, Tree) and child.data == "word":
-                target_node = child
-                target_text = self._extract_word_value(child).raw
-        if target_text is not None and target_node is not None:
-            records.extend(self._subparses_for_node(target_text, target_node))
-        heredoc = self._match_heredoc(node)
-        if operator in {"<<", "<<-"} and heredoc is not None:
-            record = self._subparsers.build_heredoc_record(heredoc)
-            if record is not None:
-                records.append(record)
-        return records
+    def _word_parts_for_assignment(self, tree: Tree) -> list[WordPart]:
+        return self._word_parts_fallback.extract_word_parts(self._flatten_tree(tree))
+
+    def _word_parts_for_word(self, tree: Tree) -> list[WordPart]:
+        return self._word_parts_fallback.extract_word_parts(self._flatten_tree(tree))
+
+    def _subparses_for_tree(self, tree: Tree, command_id: int) -> list[SubParseRecord]:
+        return self._subparsers.extract_for_text(
+            self._flatten_tree(tree),
+            start_line=getattr(tree.meta, "line", None) or 1,
+            start_column=getattr(tree.meta, "column", None) or 1,
+            parent_command_id=command_id,
+        )
+
+    def _classify_command(
+        self,
+        command_name: str | None,
+        assignments: list[str],
+        redirects: list[RedirectRecord],
+    ) -> Literal["external", "builtin", "function_call", "assignment_only", "redirect_only"]:
+        if command_name is None and assignments:
+            return "assignment_only"
+        if command_name is None and redirects:
+            return "redirect_only"
+        return "external"
 
     def _flatten_tree(self, tree: Tree) -> str:
         return "".join(self._collect_tokens(tree))
@@ -253,26 +278,26 @@ class CommandExtractor(Visitor):
                 items.extend(self._collect_tokens(child))
         return items
 
-    def _is_adjacent(self, left: Tree, right: Tree) -> bool:
+
+    def _is_adjacent(self, left: Tree | None, right: Tree) -> bool:
+        if left is None:
+            return False
         return (
             getattr(left.meta, "end_line", None) == getattr(right.meta, "line", None)
             and getattr(left.meta, "end_column", None) == getattr(right.meta, "column", None)
         )
 
-    def _match_heredoc(self, node: Tree):
-        line = getattr(node.meta, "line", None)
-        column = getattr(node.meta, "column", None)
-        for index, heredoc in enumerate(self._heredocs):
-            if heredoc.redirect_line == line and heredoc.redirect_column == column:
-                return self._heredocs.pop(index)
-        for index, heredoc in enumerate(self._heredocs):
-            if heredoc.redirect_line == line:
-                return self._heredocs.pop(index)
-        return None
+    def _node_span_key(self, node: Tree) -> tuple[int | None, int | None, int | None, int | None]:
+        return (
+            getattr(node.meta, "line", None),
+            getattr(node.meta, "column", None),
+            getattr(node.meta, "end_line", None),
+            getattr(node.meta, "end_column", None),
+        )
 
 
-def extract_commands(result: ParseResult) -> list[CommandRecord]:
-    extractor = CommandExtractor(result)
+def extract_commands(result: ParseResult, parent_command_id: int | None = None) -> list[CommandRecord]:
+    extractor = CommandExtractor(result, parent_command_id=parent_command_id)
     extractor.visit_topdown(result.tree)
     _assign_pipeline_metadata(result.tree, extractor.commands)
     return extractor.commands
