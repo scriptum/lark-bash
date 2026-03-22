@@ -1,0 +1,483 @@
+# Lexical and Syntactic EBNF Grammar for POSIX Shell (Non-Attributed)
+# Authored by Chubak Bidpaa (chubakbidpaa@riseup.net)
+# Written For the Marsh Shell (https://github.com/Chubek/Marsh)
+# This grammar is based on POSIX specs (https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html)
+# This document is released under `Unlicense` Public Domain License Agreement | (C) 2024 Chubak Bidpaa | No Warranty
+
+
+# A: Lexical Grammar for POSIX Shell
+
+
+
+## A.0: Ignorable
+
+newline			::= ? newline character on system ?
+
+tabulator		::= ? tab character on system ?
+
+whitespace		::= ' ' | tabulator
+
+skip-newline		::= '\' newline
+
+no-newline		::= ? anything but newline ?
+
+comment			::= '#' { no-newline } newline
+
+ignorable		::= whitespace | comment | skip-newline
+
+
+
+## A.1: Basics
+
+digit			::= '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+
+natural-digit		::= digit - '0'
+
+upper-case 		::= 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J'
+		         | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T'
+		         | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'
+
+lower-case 		::= 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j'
+	       	 | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't'
+		         | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
+
+punctuation 		::= '.' | ',' | ';' | ':' | '!' | '?' | '-' | '_' | '(' | ')' 
+		         | '{' | '}' | '[' | ']' | '"' | "'" | '`' | '@' | '#' 
+		         | '$' | '%' | '^' | '&' | '*' | '+' | '=' | '<' | '>' 
+		         | '/' | '|' | '~' | '\'
+
+
+
+alphabetic		::= upper-case | lower-case
+
+alphanumeric		::= alphabetic | digit
+
+printable		::= punctuation | alphanumeric | whitespace
+
+escape-character	::= '\' ( '$' | '`' | '"' | '\' | newline )
+
+
+
+
+## A.2: Integer & Identifier
+
+identifier-prefix	::= alphabetic | '_'
+
+identifier-suffix	::= alphanumeric | '_'
+
+identifier		::= identifier-prefix { identifier-suffix }
+
+integer			::= { digit }
+
+
+# B: Syntactc Grammar for POSIX Shell
+
+## B.1: Quoting
+
+literal			::= { printable }
+
+single-quote		::= "'" { literal } "'"
+
+double-quote		::= '"' { word } '"'
+
+quoted-literal		::= single-quote | double-quote
+
+
+## B.2: Positional Parameters
+
+
+positional-parameter	::= { natural-digit }
+
+
+## B.3: Special Parameters
+
+
+special-param-all-pos-a ::= '@'
+
+special-param-all-pos-b ::= '*'
+
+special-param-pos-num   ::= '#'
+
+special-param-last-exit ::= '?'
+
+special-param-async-job ::= '!'
+
+special-param-proc-id 	::= '$'
+
+special-param-flag-opts ::= '-'
+
+special-param-env-name  ::= '0'
+
+special-param-ifs	::= "IFS"
+
+special-parameters	::=  (
+			   special-param-all-pos-a
+			| special-param-all-pos-b
+			| special-param-pos-num
+			| special-param-last-exit
+			| special-param-asyncp-job
+			| special-param-proc-id
+			| special-param-flag-opts
+			| special-param-env-name
+			| special-param-ifs
+			    )
+
+
+## B.4: Variable
+
+variable-parameter	::= identifier
+
+
+
+## B.5: Parameters
+
+
+parameter		::= variable-parameter | special-parameter | positional-parameter
+
+
+invoked-parameter	::= '$' parameter
+
+
+
+
+## B.5: Tilde Expansion
+
+
+tilde-expansion		::= '~'
+
+
+## B.6: Pathname Expansion
+
+pathname-expansion	::= ? expand globs ?
+
+
+
+## B.7: Field Splitting
+
+field-splitting		::= ? split fields based on IFS ?
+
+
+
+## B.8: Parameter Expansion
+
+
+param-expand-simple    ::= "${" parameter '}'
+
+
+param-expand-default   ::= "${" parameter [ ':' ] '-' [ word ] '}'
+
+
+param-expand-assign    ::= "${" parameter [ ':' ] '=' [ word ] '}'
+
+
+param-expand-error     ::= "${" parameter [ ':' ] '?' [ word ] '}'
+
+
+param-expand-alt       ::= "${" parameter [ ':' ] '+' [ word ] '}'
+
+
+param-expand-strlen    ::= "${" '#' parameter '}'
+
+
+param-expand-rm-prefix ::= "${" parameter [ '%' ] '%' [ word ] '}'
+
+
+param-expand-rm-suffix ::= "${" parameter [ '#' ] '#' [ word ] '}'
+
+
+parameter-expansion    ::= param-expand-simple
+			| param-expand-default
+			| param-expand-assign
+			| param-expand-error
+			| param-expand-alt
+			| param-expand-strlen
+			| param-expand-rm-prefix
+			| param-expand-rm-suffix
+
+
+## B.9: Command Substitution
+
+enclosed-substitute	::= "$(" command ')'
+
+backtick-substitue	::= '`' command '`'
+
+command-substitution	::= enclosed-substitute | backtick-substitute
+
+
+## B.10: Arithmetic Expansion
+
+arithmetic-expression	::= word '+' word
+			| word '-' word
+			| word '*' word
+			| word '/' word
+			| word '%' word
+			| word '|' word
+			| word '&' word
+			| word '^' word
+			| word "**" word
+			| word ">>" word
+			| word "<<" word
+
+
+arithmetic-expansion    ::= "$((" arithmetic-expression ')'
+
+
+## B.11: Expansion
+
+quote-removal		::= ? remove escaped quotes ?
+
+
+visible-expansion	::= tilde-expansion
+			| command-substitution
+			| arithmetic-expansion
+			| parameter-expansion
+
+
+word-expansion		::= tilde-expansion
+			| pathname-expansion
+			| field-splitting
+			| parameter-expansion
+			| command-substitution
+			| arithmetic-expansion
+			| quote-removal
+
+
+
+## B.12: File Descriptor
+
+fdesc-in		::= '0'
+
+fdesc-out		::= '1'
+
+fdesc-err		::= '2'
+
+fdesc-unspec		::= '-'
+
+fdesc-high		::= '3' | ... | '9'
+
+
+fdesc			::= fdesc-in
+			| fdesc-out
+			| fdesc-err
+			| fdesc-unspec
+			| fdesc-high
+
+
+
+## B.13: Input Redirect
+
+
+redirect-input		::= [ fdesc ] '<' word
+
+
+## B.13: Output Redirect
+
+
+redirect-output		::= [ fdesc ] '>' word
+
+redirect-output-forced  ::= [ fdesc ] ">|" word
+
+
+## B.14: Append Redirected Output
+
+append-redirect-output  ::= [ fdesc ] ">>" word
+
+
+
+
+## B.15: Here Document
+
+io-here-delimiter	::= word
+
+
+io-here-start		::= [ fdesc ] ( "<<" | "<<-" ) word
+
+
+io-here			::= io-here-start { printable | newline } io-here-delimiter
+
+
+
+
+## B.16: Duplicating File Descriptors
+
+duplicate-input-fdesc   ::= [ fdesc ] "<&" word
+
+duplicate-output-fdesc  ::= [ fdesc ] ">&" word
+
+
+
+
+## B.17: Open for Reading and Writing
+
+open-file-for-rw	::= [ fdesc ] "<>" word
+
+
+## B.18: IO Redirection
+
+redirection		::= redirect-input
+			| redirect-output
+			| redirect-output-forced
+			| append-redirect-output
+			| io-here
+			| duplicate-input-fdesc
+			| duplicate-output-fdesc
+			| open-file-for-rw
+
+
+
+
+
+
+## B.19: Shell Glob Pattern
+
+glob-literal-char	::= printable
+
+glob-match-many		::= '*'
+
+glob-match-one		::= '?'
+
+
+glob-bracket-pos	::= '[' { printable } ']'
+
+
+glob-bracket-neg	::= ( "[!" | "[^" ) { printable } ']'
+
+
+glob-bracketet		::= glob-brack-pos | glob-brack-neg
+
+glob-char		::= glob-literal-char
+			| glob-match-many
+			| glob-match-one
+
+glob-element		::= glob-char | glob-bracket
+
+
+glob-word		::= { glob-element }
+
+
+
+## B.20: Shell Word
+
+
+word			::= word-expansion
+			| invoked-parameter
+			| glob-word
+			| identifier
+			| quoted-literal
+			| literal
+
+
+
+## B.21: Simple Commands
+
+
+simple-command		::= word { word } [ redirection ]
+
+
+
+## B.22: Pipelines
+
+
+pipeline		::= [ '!' ] simple-command { '|' simple-command }
+
+
+## B.23: Lists
+
+asnyc-list		::= compound-list { '&' compound-list }
+
+
+sequential-list		::= compound-list { ';' compound-list }
+
+
+and-list		::= compound-list { "&&" compound-list }
+
+
+or-list			::= compound-list { "||" compound-list }
+
+
+newline-list		::= compound-list { newline compound-list }
+
+
+compound-list		::= pipeline 
+			| async-list
+			| sequential-list
+			| and-list
+			| or-list
+			| newline-list
+			| compound-command
+
+
+
+
+## B.24: Grouped Compound Commands
+
+
+subshell-compound-cmd	::= '(' compound-list ')'
+
+sameshell-compound-cmd	::= '{' compound-list ';' '}'
+
+
+grouped-compound-cmd	::= subshell-compound-cmd | sameshell-compound-cmd
+
+
+
+
+## B.25: Looped Compound Commands
+
+for-compound-cmd	::= "for" identifier [ "in" { word } ] [ ';' ] "do" compound-list [ ';' ] "done"
+
+while-compound-cmd	::= "while" compound-list [ ';' ] "do" compound-list [ ';' ] "done"
+
+until-compound-cmd	::= "while" compound-list [ ';' ] "do" compound-list [ ';' ] "done"
+
+
+
+looped-compound-cmd	::= for-compound-cmd | while-compound-cmd | until-compound-cmd
+
+
+## B.26: Conditional Compound Commands
+
+glob-alt-list		::= glob-word { '|' glob-word }
+
+case-condition		::= glob-alt-list ')' compound-list ";;"
+
+case-compound-cmd	::= "case" word [ ';' ] "in" { case-condition } [ ';' ] "esac"
+
+elif-alt		::=  "elif" compound-list [ ';' ] "then" compound-list
+
+else-alt		::= "else" compound-list
+
+if-compound-cmd		::= "if" compound-list [ ';' ] "then" compound-list [ ';' ] { elif-alt } [ ';' ] else-alt [ ';' ] "fi"
+
+
+condition-compound-cmd	::= case-compound-cmd | if-compound-cmd
+
+
+## B.27: Function Definition Compound Command
+
+
+funcdef-compound-cmd	::= identifier "()" compound-command [ redirection ]
+
+
+
+
+## B.28: Compound Command and Command
+
+
+compound-command	::= grouped-compound-cmd
+			| looped-compound-cmd
+			| condition-compound-cmd
+			| funcdef-compound-cmd
+
+
+
+
+command			::= simple-command | pipeline | compound-command
+
+
+
+## B.29: Shell
+
+posix-shell		::= { command | ignorable }
+
+
