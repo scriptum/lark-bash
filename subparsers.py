@@ -27,6 +27,7 @@ class SubParseRecord:
     delimiter: str | None = None
     expansion_enabled: bool | None = None
     mode: SubParseMode = "command"
+    depth: int = 0
     error: str | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -39,6 +40,7 @@ class SubParseRecord:
             "delimiter": self.delimiter,
             "expansion_enabled": self.expansion_enabled,
             "mode": self.mode,
+            "depth": self.depth,
             "error": self.error,
         }
 
@@ -79,6 +81,10 @@ class NestedSubstitutionTransformer(Transformer):
         return self._build_record("command_substitution", tree, mode="command")
 
     @v_args(tree=True)
+    def arithmetic_expansion(self, tree: Tree) -> SubParseRecord:
+        return self._build_record("arithmetic_expansion", tree, mode="arithmetic")
+
+    @v_args(tree=True)
     def process_substitution_in(self, tree: Tree) -> SubParseRecord:
         return self._build_record("process_substitution_in", tree, mode="command")
 
@@ -111,6 +117,7 @@ class NestedSubstitutionTransformer(Transformer):
             tree_pretty=tree_pretty,
             commands=commands,
             mode=mode,
+            depth=self.depth + 1,
             error=error,
         )
 
@@ -210,6 +217,7 @@ class SubParserManager:
                 delimiter=heredoc.delimiter,
                 expansion_enabled=False,
                 mode="command",
+                depth=depth,
             )
         _, tree_pretty, commands, error = self.parse_nested_shell(
             heredoc.body,
@@ -231,6 +239,7 @@ class SubParserManager:
             delimiter=heredoc.delimiter,
             expansion_enabled=True,
             mode="command",
+            depth=depth,
             error=error,
         )
 
@@ -246,16 +255,19 @@ class SubParserManager:
         cache_key = (payload, depth, mode, parent_command_id)
         if cache_key in self._shell_cache:
             return self._shell_cache[cache_key]
-        try:
-            parsed = self._parser.parse(payload)
-            commands = self._extract_commands(parsed, parent_command_id=parent_command_id)
-            result = (parsed, parsed.tree.pretty(), commands, None)
-        except UnexpectedInput as exc:
-            result = (None, "<failed>", [], str(exc))
+        if mode != "command":
+            result = (None, "", [], None)
+        else:
+            try:
+                parsed = self._parser.parse(payload)
+                commands = self._extract_commands(parsed, parent_command_id=parent_command_id)
+                result = (parsed, parsed.tree.pretty(), commands, None)
+            except UnexpectedInput as exc:
+                result = (None, "<failed>", [], str(exc))
         self._shell_cache[cache_key] = result
         return result
 
-    def _failed_record(self, raw_text: str, start_line: int, start_column: int, error: str) -> SubParseRecord:
+    def _failed_record(self, raw_text: str, start_line: int, start_column: int, error: str, depth: int = 0) -> SubParseRecord:
         return SubParseRecord(
             kind="failed",
             raw_text=raw_text,
@@ -268,6 +280,7 @@ class SubParserManager:
             tree_pretty="<failed>",
             commands=[],
             mode="command",
+            depth=depth,
             error=error,
         )
 

@@ -52,3 +52,13 @@ def test_quoted_heredoc_stays_literal() -> None:
     assert len(heredocs) == 1
     assert heredocs[0].expansion_enabled is False
     assert heredocs[0].commands == []
+
+
+def test_arithmetic_expansion_is_structural_subparse() -> None:
+    parsed = BashParser().parse('echo $((1 + 2))\n')
+    command = extract_commands(parsed)[0]
+    arithmetic = [record for record in command.subparses if record.kind == 'arithmetic_expansion']
+    assert len(arithmetic) == 1
+    assert arithmetic[0].mode == 'arithmetic'
+    assert arithmetic[0].commands == []
+    assert arithmetic[0].depth == 1

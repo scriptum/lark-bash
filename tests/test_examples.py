@@ -14,11 +14,11 @@ EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
     ("example_name", "expected_prefix"),
     [
         pytest.param("atom.sh", ["echo", "exit"], marks=pytest.mark.xfail(reason="example still uses unsupported multiline case/[ ... ] patterns", strict=False)),
-        pytest.param("clean-old.sh", ["which", "echo"], marks=pytest.mark.xfail(reason="example still uses unsupported legacy test/array syntax combinations", strict=False)),
+        ("clean-old.sh", ["which", "which", "echo"]),
         pytest.param("doc-build.sh", ["set", "set", "cat"], marks=pytest.mark.xfail(reason="example still uses unsupported ! [ ... ] and multiline case forms", strict=False)),
         pytest.param("install.sh", ["curl", "rm", "echo"], marks=pytest.mark.xfail(reason="example still uses unsupported POSIX [ ... ] forms in many branches", strict=False)),
         ("minimal.sh", ["echo", "bar", "baz"]),
-        pytest.param("relocate.sh", ["echo", "cat", "rm"], marks=pytest.mark.xfail(reason="example still uses unsupported single-bracket tests", strict=False)),
+        ("relocate.sh", ["sed", "echo", "cat"]),
         ("release.sh", ["unset", "set", "rm"]),
         pytest.param("test.sh", ["cat", "usage"], marks=pytest.mark.xfail(reason="example still uses unsupported multiline case/test constructs", strict=False)),
         ("update-authors.sh", ["git", "perl"]),
@@ -30,6 +30,8 @@ def test_example_scripts_parse(example_name: str, expected_prefix: list[str]) ->
 
     commands = extract_commands(result)
 
+    named_commands = [command.name for command in commands if command.name is not None]
+
     assert result.source_path == EXAMPLES_DIR / example_name
-    assert [command.name for command in commands[: len(expected_prefix)]] == expected_prefix
+    assert named_commands[: len(expected_prefix)] == expected_prefix
     assert commands

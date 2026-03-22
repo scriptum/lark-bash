@@ -142,3 +142,23 @@ def test_nested_substitutions_create_nested_subparses(parser: BashParser) -> Non
     assert [command.name for command in outer.commands] == ["echo"]
     assert outer.commands[0].subparses[0].kind == "command_substitution"
     assert [command.name for command in outer.commands[0].subparses[0].commands] == ["date"]
+
+
+def test_tree_classifies_compound_and_keyword_constructs(parser: BashParser) -> None:
+    tree = parser.parse('if cmd; then { echo ok; } fi\n').tree
+    assert any(tree.find_pred(lambda node: node.data == 'keyword_construct'))
+    assert any(tree.find_pred(lambda node: node.data == 'compound_command'))
+
+
+def test_keywords_and_functions_do_not_become_commands(parser: BashParser) -> None:
+    result = parser.parse('foo() { echo hi; }\nif bar; then (( i++ )); fi\n')
+    commands = extract_commands(result)
+    assert [command.name for command in commands] == ['echo', 'bar']
+    assert all(command.name not in {'if', 'then', 'fi', 'function'} for command in commands)
+
+
+def test_posix_test_and_plain_parameter_words_parse(parser: BashParser) -> None:
+    result = parser.parse('if [ -n "$HOME" ]; then echo $USER $$ $?; fi\n')
+    commands = extract_commands(result)
+    assert [command.name for command in commands] == ['echo']
+    assert commands[0].args == ['$USER', '$$', '$?']

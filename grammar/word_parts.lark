@@ -14,7 +14,7 @@ process_substitution: PROCESS_SUBSTITUTION
 quoted_literal: QUOTED_LITERAL
 literal: LITERAL
 
-PARAM_EXPANSION.20: /\$\{[^\n]*?\}/
+PARAM_EXPANSION.20: /\$\{[^\n]*?\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[-!$?@#*])/
 ARITHMETIC_EXPANSION.21: /\$\(\([^\n]*?\)\)/
 COMMAND_SUBSTITUTION.20: /\$\((?:[^()\n]|\([^()\n]*\))*\)|`[^\n]*?`/
 PROCESS_SUBSTITUTION.20: /<\((?:[^()\n]|\([^()\n]*\))*\)|>\((?:[^()\n]|\([^()\n]*\))*\)/

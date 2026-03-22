@@ -52,6 +52,7 @@ class CommandRecord:
             "parent_command_id": self.parent_command_id,
             "type": self.type,
             "name": self.name,
+            "command_name": self.name,
             "args": self.args,
             "args_structured": [[part.to_dict() for part in arg] for arg in self.args_structured],
             "args_expanded": [[record.to_dict() for record in arg] for arg in self.args_expanded],
@@ -165,7 +166,7 @@ class CommandExtractor(Visitor):
         )
 
     def visit_topdown(self, tree: Tree) -> None:
-        if tree.data in {"brace_group", "subshell", "if_clause", "while_clause", "until_clause", "for_clause", "case_clause", "pipeline", "and_or"}:
+        if tree.data in {"compound_command", "keyword_construct", "brace_group", "subshell", "if_clause", "while_clause", "until_clause", "for_clause", "select_clause", "case_clause", "test_clause", "arithmetic_command", "pipeline", "and_or", "function_definition", "bash_function_definition"}:
             self._wrappers.append(tree.data)
             super().visit_topdown(tree)
             self._wrappers.pop()
