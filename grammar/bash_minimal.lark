@@ -1,0 +1,88 @@
+start: body
+body: body_part*
+body_part: SEP | and_or SEP?
+
+clause_body: body_part+
+
+and_or: pipeline ((AND_IF | OR_IF) pipeline)*
+pipeline: BANG? command (PIPE command)*
+
+?command: function_definition
+        | compound_command redirect*
+        | simple_command
+
+simple_command: command_part+
+command_part: assignment_word | redirect | word
+assignment_word: ASSIGNMENT_WORD
+
+?compound_command: brace_group
+                 | subshell
+                 | for_clause
+                 | while_clause
+                 | until_clause
+                 | if_clause
+                 | case_clause
+
+brace_group: LBRACE body RBRACE
+subshell: LPAR body RPAR
+
+for_clause: FOR name for_words? SEP DO clause_body DONE
+for_words: IN wordlist?
+wordlist: word+
+
+while_clause: WHILE clause_body DO clause_body DONE
+until_clause: UNTIL clause_body DO clause_body DONE
+
+if_clause: IF clause_body THEN clause_body elif_clause* else_clause? FI
+elif_clause: ELIF clause_body THEN clause_body
+else_clause: ELSE clause_body
+
+case_clause: CASE word IN case_item* ESAC
+case_item: pattern_list RPAR case_body DSEMI
+case_body: body_part*
+pattern_list: word (PIPE word)*
+
+function_definition: FUNC_NAME function_body
+function_body: compound_command redirect*
+name: NAME
+
+redirect: IO_NUMBER? REDIR_OP word?
+word: SUBSHELL_WORD
+    | WORD
+
+AND_IF: "&&"
+OR_IF: "||"
+PIPE: "|"
+BANG: "!"
+DSEMI.10: ";;"
+LBRACE: "{"
+RBRACE: "}"
+LPAR: "("
+RPAR: ")"
+
+FOR: "for"
+WHILE: "while"
+UNTIL: "until"
+DO: "do"
+DONE: "done"
+IF: "if"
+THEN: "then"
+ELIF: "elif"
+ELSE: "else"
+FI: "fi"
+CASE: "case"
+IN: "in"
+ESAC: "esac"
+
+SEP: /(?:;|&)(?:\\\n|\n)*|(?:\\\n|\n)+/
+IO_NUMBER: /[0-9]+/
+FUNC_NAME.10: /[A-Za-z_][A-Za-z0-9_]*\(\)/
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+ASSIGNMENT_WORD: /[A-Za-z_][A-Za-z0-9_]*=(?:[^\s;|&<>(){}\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')*/
+REDIR_OP: "<<-" | "<<" | ">|" | ">>" | "<&" | ">&" | "<>" | "<" | ">"
+SUBSHELL_WORD.10: /\$\([^\n]*?\)|`[^\n]*?`|<\([^\n]*?\)|>\([^\n]*?\)/
+WORD: /(?:[^\s;|&<>(){}#\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*'|\$\{[^\n]*?\})+/
+COMMENT: /#[^\n]*/
+
+%ignore /[\t \f\r]+/
+%ignore COMMENT
