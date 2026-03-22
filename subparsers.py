@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from lark import Lark, Token, Transformer, Tree, v_args
+from lark import Lark, Token, Transformer, Tree, UnexpectedInput, v_args
 
 from parser import BashParser, HereDocSource, ParseResult
 
@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from extractor import CommandRecord
 
 GRAMMAR_PATH = Path(__file__).parent / "grammar" / "subparsers.lark"
+WORD_PARTS_GRAMMAR_PATH = Path(__file__).parent / "grammar" / "word_parts.lark"
+MAX_SUBPARSE_DEPTH = 5
 
 
 @dataclass(slots=True)
@@ -37,11 +39,12 @@ class SubParseRecord:
 
 
 class NestedSubstitutionTransformer(Transformer):
-    def __init__(self, manager: SubParserManager, base_line: int, base_column: int) -> None:
+    def __init__(self, manager: SubParserManager, base_line: int, base_column: int, depth: int) -> None:
         super().__init__()
         self.manager = manager
         self.base_line = base_line
         self.base_column = base_column
+        self.depth = depth
 
     def start(self, children: list[Any]) -> list[SubParseRecord]:
         return [child for child in children if isinstance(child, SubParseRecord)]
@@ -77,8 +80,7 @@ class NestedSubstitutionTransformer(Transformer):
     def _build_record(self, kind: str, tree: Tree) -> SubParseRecord:
         raw_text = self._flatten(tree.children)
         payload = self._flatten(tree.children[1:-1])
-        parsed = self.manager._parser.parse(payload)
-        commands = self.manager._extract_commands(parsed)
+        parsed, tree_pretty, commands = self.manager.parse_nested_shell(payload, self.depth + 1)
         return SubParseRecord(
             kind=kind,
             raw_text=raw_text,
@@ -88,7 +90,7 @@ class NestedSubstitutionTransformer(Transformer):
                 "end_line": self.base_line + getattr(tree.meta, "end_line", 1) - 1,
                 "end_column": self._column_offset(getattr(tree.meta, "end_line", 1), getattr(tree.meta, "end_column", 1)),
             },
-            tree_pretty=parsed.tree.pretty(),
+            tree_pretty=tree_pretty,
             commands=commands,
         )
 
@@ -119,13 +121,47 @@ class SubParserManager:
             maybe_placeholders=False,
             start="start",
         )
+        self._word_parts_parser = Lark.open(
+            str(WORD_PARTS_GRAMMAR_PATH),
+            parser="lalr",
+            propagate_positions=True,
+            maybe_placeholders=False,
+            start="start",
+        )
+        self._shell_cache: dict[tuple[str, int], tuple[ParseResult | None, str, list[CommandRecord]]] = {}
 
-    def extract_for_text(self, text: str, start_line: int, start_column: int) -> list[SubParseRecord]:
-        tree = self._fragment_parser.parse(text)
-        transformer = NestedSubstitutionTransformer(self, start_line, start_column)
+    def extract_for_text(self, text: str, start_line: int, start_column: int, depth: int = 0) -> list[SubParseRecord]:
+        if depth >= MAX_SUBPARSE_DEPTH:
+            return []
+        try:
+            tree = self._fragment_parser.parse(text)
+        except UnexpectedInput:
+            return []
+        transformer = NestedSubstitutionTransformer(self, start_line, start_column, depth)
         return transformer.transform(tree)
 
-    def build_heredoc_record(self, heredoc: HereDocSource) -> SubParseRecord | None:
+    def extract_word_parts(self, text: str) -> list[object]:
+        from extractor import WordPart
+
+        try:
+            tree = self._word_parts_parser.parse(text)
+        except UnexpectedInput:
+            return [WordPart(type="literal", value=text)] if text else []
+        parts: list[WordPart] = []
+        type_map = {
+            "literal": "literal",
+            "quoted_literal": "literal",
+            "param_expansion": "param_expansion",
+            "arithmetic_expansion": "arithmetic_expansion",
+            "command_substitution": "command_substitution",
+            "process_substitution": "process_substitution",
+        }
+        for child in tree.children:
+            if isinstance(child, Tree) and child.children and isinstance(child.children[0], Token):
+                parts.append(WordPart(type=type_map[child.data], value=child.children[0].value))
+        return parts
+
+    def build_heredoc_record(self, heredoc: HereDocSource, depth: int = 0) -> SubParseRecord | None:
         if heredoc.quoted:
             return SubParseRecord(
                 kind="heredoc",
@@ -141,8 +177,7 @@ class SubParserManager:
                 delimiter=heredoc.delimiter,
                 expansion_enabled=False,
             )
-        parsed = self._parser.parse(heredoc.body)
-        commands = self._extract_commands(parsed)
+        _, tree_pretty, commands = self.parse_nested_shell(heredoc.body, depth + 1)
         return SubParseRecord(
             kind="heredoc",
             raw_text=heredoc.body,
@@ -152,11 +187,26 @@ class SubParserManager:
                 "end_line": heredoc.end_line,
                 "end_column": None,
             },
-            tree_pretty=parsed.tree.pretty(),
+            tree_pretty=tree_pretty,
             commands=commands,
             delimiter=heredoc.delimiter,
             expansion_enabled=True,
         )
+
+    def parse_nested_shell(self, payload: str, depth: int) -> tuple[ParseResult | None, str, list[CommandRecord]]:
+        if depth >= MAX_SUBPARSE_DEPTH:
+            return None, "<failed>", []
+        cache_key = (payload, depth)
+        if cache_key in self._shell_cache:
+            return self._shell_cache[cache_key]
+        try:
+            parsed = self._parser.parse(payload)
+            commands = self._extract_commands(parsed)
+            result = (parsed, parsed.tree.pretty(), commands)
+        except UnexpectedInput:
+            result = (None, "<failed>", [])
+        self._shell_cache[cache_key] = result
+        return result
 
     def _extract_commands(self, parsed: ParseResult) -> list[CommandRecord]:
         from extractor import extract_commands

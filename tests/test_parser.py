@@ -91,3 +91,54 @@ def test_bash_compound_nodes_exist(parser: BashParser) -> None:
 
     select_tree = parser.parse("select item in a b; do echo \"$item\"; done\n").tree
     assert any(select_tree.find_pred(lambda node: node.data == "select_clause"))
+
+
+def test_redirect_kind_process_substitution_and_pipeline_metadata(parser: BashParser) -> None:
+    result = parser.parse("a | cmd 2> >(tee log) | c\n")
+    commands = extract_commands(result)
+    assert [command.name for command in commands] == ["a", "cmd", "c"]
+    assert [(command.pipeline_id, command.pipeline_index) for command in commands] == [(0, 0), (0, 1), (0, 2)]
+    redirect = commands[1].redirects[0]
+    assert (redirect.operator, redirect.fd, redirect.target, redirect.kind) == (">", "2", ">(tee log)", "process_substitution")
+
+
+def test_mixed_expansion_word_parts(parser: BashParser) -> None:
+    result = parser.parse("echo foo$(bar)baz\n")
+    commands = extract_commands(result)
+    assert commands[0].args == ["foo$(bar)baz"]
+    assert [(part.type, part.value) for part in commands[0].args_structured[0]] == [
+        ("literal", "foo"),
+        ("command_substitution", "$(bar)"),
+        ("literal", "baz"),
+    ]
+
+
+def test_assignment_only_and_redirect_only_have_no_command_name(parser: BashParser) -> None:
+    assignment_only = extract_commands(parser.parse("A=B=C\n"))
+    assert len(assignment_only) == 1
+    assert assignment_only[0].name is None
+    assert assignment_only[0].assignments == ["A=B=C"]
+
+    redirect_only = extract_commands(parser.parse("> out\n"))
+    assert len(redirect_only) == 1
+    assert redirect_only[0].name is None
+    assert redirect_only[0].redirects[0].kind == "file"
+
+
+def test_multiple_heredocs_are_attached_to_matching_redirects(parser: BashParser) -> None:
+    result = parser.parse("cat <<EOF1 <<EOF2\na\nEOF1\nb\nEOF2\n")
+    commands = extract_commands(result)
+    heredocs = [record for record in commands[0].subparses if record.kind == "heredoc"]
+    assert [redirect.kind for redirect in commands[0].redirects] == ["heredoc", "heredoc"]
+    assert [record.delimiter for record in heredocs] == ["EOF1", "EOF2"]
+    assert [record.raw_text for record in heredocs] == ["a\n", "b\n"]
+
+
+def test_nested_substitutions_create_nested_subparses(parser: BashParser) -> None:
+    result = parser.parse("echo $(echo $(date))\n")
+    commands = extract_commands(result)
+    outer = commands[0].subparses[0]
+    assert outer.kind == "command_substitution"
+    assert [command.name for command in outer.commands] == ["echo"]
+    assert outer.commands[0].subparses[0].kind == "command_substitution"
+    assert [command.name for command in outer.commands[0].subparses[0].commands] == ["date"]
