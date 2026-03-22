@@ -1,0 +1,34 @@
+start: fragment*
+
+?fragment: command_substitution
+         | process_substitution_in
+         | process_substitution_out
+         | backticks
+         | parenthesized
+         | text
+
+command_substitution: DOLLAR_LPAR fragment* RPAR
+process_substitution_in: LESS_LPAR fragment* RPAR
+process_substitution_out: GREATER_LPAR fragment* RPAR
+backticks: BACKTICK backtick_fragment* BACKTICK
+parenthesized: LPAR fragment* RPAR
+
+?backtick_fragment: command_substitution
+                  | process_substitution_in
+                  | process_substitution_out
+                  | escaped_backtick
+                  | bt_text
+
+text: TEXT
+bt_text: BT_TEXT
+escaped_backtick: ESCAPED_BACKTICK
+
+DOLLAR_LPAR: "$("
+LESS_LPAR: "<("
+GREATER_LPAR: ">(" 
+BACKTICK: "`"
+LPAR: "("
+RPAR: ")"
+ESCAPED_BACKTICK: /\\./
+TEXT: /(?:[^`$<>()\\]+|\\.|\$(?!\()|<(?!\()|>(?!\())+/
+BT_TEXT: /(?:[^`\\]+|\\.)+/
