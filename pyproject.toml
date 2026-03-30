@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lark-bash"
+version = "0.1.0"
+description = "Bash parser based on Lark"
+requires-python = ">=3.10"
+dependencies = [
+  "lark>=1.2.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+

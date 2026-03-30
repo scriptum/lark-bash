@@ -1,0 +1,18 @@
+start: substitution
+
+?substitution: cmd_subst
+             | backtick_subst
+             | process_subst
+             | arith_expansion
+             | param_expansion
+
+cmd_subst: "$" "(" INNER ")"
+backtick_subst: "`" BACKTICK_BODY "`"
+process_subst: ("<"|">") "(" INNER ")"
+arith_expansion: "$" "((" ARITH_BODY "))"
+param_expansion: "$" "{" PARAM_BODY "}"
+
+INNER: /[^)]+/
+BACKTICK_BODY: /[^`]+/
+ARITH_BODY: /[^)]+/
+PARAM_BODY: /[^}]+/

@@ -1,0 +1,137 @@
+start: script
+
+script: separator* statement (separator+ statement)* separator*
+
+?statement: pipeline
+          | if_clause
+          | for_clause
+          | while_clause
+          | until_clause
+          | case_clause
+          | function_def
+
+separator: ";" | NEWLINE+
+
+pipeline: timed_command ("|" timed_command)*
+timed_command: TIME? command
+
+?command: simple_command
+        | group_command
+        | subshell
+        | test_command
+        | arith_command
+
+simple_command: cmd_prefix? cmd_word cmd_suffix?
+              | cmd_prefix
+
+cmd_prefix: (assignment | redirect)+
+cmd_suffix: (arg | redirect)+
+
+cmd_word: word
+arg: word
+
+assignment: ASSIGNMENT
+
+redirect: REDIR_OP word                       -> redirect_word
+        | REDIR_OP process_substitution       -> redirect_process_subst
+        | HEREDOC_OP heredoc_delim            -> redirect_heredoc
+        | FD_REDIRECT_OP word                 -> redirect_fd_word
+        | FD_REDIRECT_OP process_substitution -> redirect_fd_process_subst
+        | FD_HEREDOC_OP heredoc_delim         -> redirect_fd_heredoc
+        | HERE_STRING word                    -> redirect_here_string
+
+heredoc_delim: word
+
+process_substitution: "<" "(" compound_list ")"   -> process_substitution_in
+                    | ">" "(" compound_list ")"   -> process_substitution_out
+
+if_clause: IF compound_list THEN compound_list elif_part* else_part? FI
+elif_part: ELIF compound_list THEN compound_list
+else_part: ELSE compound_list
+
+for_clause: FOR IDENT (IN word_list (";"|NEWLINE+)?)? DO compound_list DONE
+word_list: word+
+
+while_clause: WHILE compound_list DO compound_list DONE
+until_clause: UNTIL compound_list DO compound_list DONE
+
+case_clause: CASE word IN case_item+ ESAC
+case_item: case_pattern ")" compound_list DSEMI?
+case_pattern: word ("|" word)*
+
+function_def: FUNCTION? IDENT "(" ")" compound_command
+
+?compound_command: group_command
+                 | subshell
+                 | if_clause
+                 | for_clause
+                 | while_clause
+                 | until_clause
+                 | case_clause
+                 | simple_command
+
+group_command: "{" compound_list "}"
+subshell: "(" compound_list ")"
+
+compound_list: separator* statement (separator+ statement)* separator*
+
+test_command: TEST_EXPR
+arith_command: ARITH_CMD
+
+word: unquoted_word
+    | single_quoted
+    | double_quoted
+    | command_substitution
+    | backtick_substitution
+    | parameter_expansion
+    | arithmetic_expansion
+
+unquoted_word: UNQUOTED
+single_quoted: SINGLE_QUOTED
+double_quoted: DOUBLE_QUOTED
+command_substitution: CMD_SUB
+backtick_substitution: BACKTICK_SUB
+parameter_expansion: PARAM_EXP
+arithmetic_expansion: ARITH_EXP
+
+TIME: "time"
+IF: "if"
+THEN: "then"
+ELSE: "else"
+ELIF: "elif"
+FI: "fi"
+CASE: "case"
+IN: "in"
+ESAC: "esac"
+FOR: "for"
+WHILE: "while"
+UNTIL: "until"
+DO: "do"
+DONE: "done"
+FUNCTION: "function"
+
+DSEMI: ";;"
+
+REDIR_OP: "<"|">>"|">"|"<>"|"<&"|">&"
+FD_REDIRECT_OP: /[0-9]+(?:<|>|>>|<>|<&|>&)/
+HEREDOC_OP: "<<"|"<<-"
+FD_HEREDOC_OP: /[0-9]+(?:<<|<<-)/
+HERE_STRING: "<<<"
+
+IDENT: /[a-zA-Z_][a-zA-Z0-9_]*/
+ASSIGNMENT: /[a-zA-Z_][a-zA-Z0-9_]*=[^\s;|]*/
+CMD_SUB: /\$\((?:[^()]|\([^()]*\))*\)/
+BACKTICK_SUB: /`[^`]+`/
+PARAM_EXP: /\$\{[^}]+\}/
+ARITH_EXP: /\$\(\([^\n]+\)\)/
+ARITH_CMD: /\(\([^\r\n]*\)\)/
+TEST_EXPR: /\[\[[^\r\n]*\]\]/
+UNQUOTED: /(?:\\\n|\\.|[^\s;|{}<>`"'#])+/ 
+SINGLE_QUOTED: /'[^']*'/
+DOUBLE_QUOTED: /"(?:\\.|[^"\\])*"/
+
+NEWLINE: /\r?\n/
+COMMENT: /#[^\n]*/
+
+%ignore /[ \t\f]+/
+%ignore COMMENT

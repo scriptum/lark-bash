@@ -1,0 +1,571 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+The content has been processed where content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: **/*.lark, **/*.py
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+grammar/
+  bash_minimal.lark
+  subparsers.lark
+scripts/
+  debug_extract.py
+tests/
+  conftest.py
+  test_examples.py
+  test_parser.py
+  test_subparsers.py
+benchmark.py
+extractor.py
+parser.py
+subparsers.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="tests/test_examples.py">
+EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
+⋮----
+def test_example_scripts_parse(example_name: str, expected_prefix: list[str]) -> None
+⋮----
+parser = BashParser()
+result = parser.parse_file(EXAMPLES_DIR / example_name)
+⋮----
+commands = extract_commands(result)
+</file>
+
+<file path="grammar/bash_minimal.lark">
+start: body
+body: body_part*
+body_part: SEP | and_or SEP?
+
+clause_body: body_part+
+
+and_or: pipeline ((AND_IF | OR_IF) pipeline)*
+pipeline: BANG? command (PIPE command)*
+
+?command: function_definition
+        | bash_function_definition
+        | compound_command redirect*
+        | simple_command
+
+simple_command: command_part+
+command_part: assignment_word | redirect | word
+assignment_word: ASSIGNMENT_WORD | ARRAY_ASSIGNMENT_WORD
+
+?compound_command: brace_group
+                 | subshell
+                 | for_clause
+                 | select_clause
+                 | while_clause
+                 | until_clause
+                 | if_clause
+                 | case_clause
+                 | test_clause
+                 | arithmetic_command
+
+brace_group: LBRACE body RBRACE
+subshell: LPAR body RPAR
+
+for_clause: FOR name for_words? SEP DO clause_body DONE
+select_clause: SELECT name for_words? SEP DO clause_body DONE
+for_words: IN wordlist?
+wordlist: word+
+
+while_clause: WHILE clause_body DO clause_body DONE
+until_clause: UNTIL clause_body DO clause_body DONE
+
+if_clause: IF clause_body THEN clause_body elif_clause* else_clause? FI
+elif_clause: ELIF clause_body THEN clause_body
+else_clause: ELSE clause_body
+
+test_clause: DBL_LBRACK TEST_BODY? DBL_RBRACK
+arithmetic_command: DBL_LPAR ARITH_CMD_BODY? DBL_RPAR
+
+case_clause: CASE word IN case_item* ESAC
+case_item: pattern_list RPAR case_body DSEMI
+case_body: body_part*
+pattern_list: word (PIPE word)*
+
+function_definition: FUNC_NAME function_body
+bash_function_definition: FUNCTION name function_body
+function_body: compound_command redirect*
+name: NAME
+
+redirect: IO_NUMBER? REDIR_OP word?
+word: EXPANSION_WORD
+    | SUBSHELL_WORD
+    | WORD
+
+AND_IF: "&&"
+OR_IF: "||"
+PIPE: "|"
+BANG: "!"
+DSEMI.10: ";;"
+LBRACE: "{"
+RBRACE: "}"
+LPAR: "("
+RPAR: ")"
+DBL_LBRACK: "[["
+DBL_RBRACK: "]]"
+DBL_LPAR: "(("
+DBL_RPAR: "))"
+
+FOR: "for"
+SELECT: "select"
+WHILE: "while"
+UNTIL: "until"
+DO: "do"
+DONE: "done"
+IF: "if"
+THEN: "then"
+ELIF: "elif"
+ELSE: "else"
+FI: "fi"
+CASE: "case"
+IN: "in"
+ESAC: "esac"
+FUNCTION: "function"
+
+SEP: /(?:;|&)(?:\\\n|\n)*|(?:\\\n|\n)+/
+IO_NUMBER: /[0-9]+/
+FUNC_NAME.10: /[A-Za-z_][A-Za-z0-9_]*\(\)/
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+ASSIGNMENT_WORD: /[A-Za-z_][A-Za-z0-9_]*=(?:[^\s;|&<>(){}\[\]\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')*/
+ARRAY_ASSIGNMENT_WORD.11: /(?:[A-Za-z_][A-Za-z0-9_]*\+=\([^\n]*\)|[A-Za-z_][A-Za-z0-9_]*=\([^\n]*\))/
+REDIR_OP: "<<-" | "<<" | ">|" | ">>" | "<&" | ">&" | "<>" | "<" | ">"
+EXPANSION_WORD.11: /\$\{[^\n]*?\}|\$\(\([^\n]*?\)\)/
+SUBSHELL_WORD.10: /\$\([^\n]*?\)|`[^\n]*?`|<\([^\n]*?\)|>\([^\n]*?\)/
+WORD: /(?:[^\s;|&<>(){}#\[\]\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')+/
+TEST_BODY: /(?:[^\]]|\](?!\]))+/
+ARITH_CMD_BODY: /(?:[^)]|\)(?!\)))+/
+COMMENT: /#[^\n]*/
+
+%ignore /[\t \f\r]+/
+%ignore COMMENT
+</file>
+
+<file path="grammar/subparsers.lark">
+start: fragment*
+
+?fragment: command_substitution
+         | process_substitution_in
+         | process_substitution_out
+         | backticks
+         | parenthesized
+         | text
+
+command_substitution: DOLLAR_LPAR fragment* RPAR
+process_substitution_in: LESS_LPAR fragment* RPAR
+process_substitution_out: GREATER_LPAR fragment* RPAR
+backticks: BACKTICK backtick_fragment* BACKTICK
+parenthesized: LPAR fragment* RPAR
+
+?backtick_fragment: command_substitution
+                  | process_substitution_in
+                  | process_substitution_out
+                  | escaped_backtick
+                  | bt_text
+
+text: TEXT
+bt_text: BT_TEXT
+escaped_backtick: ESCAPED_BACKTICK
+
+DOLLAR_LPAR: "$("
+LESS_LPAR: "<("
+GREATER_LPAR: ">(" 
+BACKTICK: "`"
+LPAR: "("
+RPAR: ")"
+ESCAPED_BACKTICK: /\\./
+TEXT: /(?:[^`$<>()\\]+|\\.|\$(?!\()|<(?!\()|>(?!\())+/
+BT_TEXT: /(?:[^`\\]+|\\.)+/
+</file>
+
+<file path="scripts/debug_extract.py">
+ROOT = Path(__file__).resolve().parents[1]
+⋮----
+def main() -> None
+⋮----
+cli = argparse.ArgumentParser(description="Debug parse tree and extracted command records.")
+⋮----
+args = cli.parse_args()
+⋮----
+parsed = BashParser().parse_file(args.path)
+</file>
+
+<file path="tests/conftest.py">
+ROOT = Path(__file__).resolve().parents[1]
+</file>
+
+<file path="tests/test_parser.py">
+@pytest.fixture(scope="module")
+def parser() -> BashParser
+⋮----
+def test_parser_smoke(parser: BashParser, source: str, expected_commands: list[str]) -> None
+⋮----
+result = parser.parse(source)
+commands = extract_commands(result)
+⋮----
+def test_redirects_and_assignments(parser: BashParser) -> None
+⋮----
+result = parser.parse("VAR=value cmd >out 2>&1 arg\n")
+⋮----
+command = commands[0]
+⋮----
+def test_tree_contains_posix_compound_nodes(parser: BashParser) -> None
+⋮----
+tree = parser.parse("if cmd; then echo ok; else echo no; fi\n").tree
+⋮----
+case_tree = parser.parse("case \"$x\" in a|b) echo 1 ;; esac\n").tree
+⋮----
+def test_bash_extensions_parse_and_extract(parser: BashParser) -> None
+⋮----
+result = parser.parse("function greet { echo hi; }\ngreet\n")
+⋮----
+def test_parameter_and_arithmetic_expansions_are_words(parser: BashParser) -> None
+⋮----
+result = parser.parse("echo ${HOME:-/tmp} $((1 + 2))\n")
+⋮----
+def test_array_assignment_word_is_extracted_as_assignment(parser: BashParser) -> None
+⋮----
+result = parser.parse("arr+=(three)\n")
+⋮----
+def test_bash_compound_nodes_exist(parser: BashParser) -> None
+⋮----
+tree = parser.parse("if [[ -n $x ]]; then ((count++)); fi\n").tree
+⋮----
+select_tree = parser.parse("select item in a b; do echo \"$item\"; done\n").tree
+</file>
+
+<file path="tests/test_subparsers.py">
+def test_command_substitution_subparser() -> None
+⋮----
+parsed = BashParser().parse('echo $(date)\n')
+commands = extract_commands(parsed)
+⋮----
+subparse = commands[0].subparses[0]
+⋮----
+def test_backticks_subparser() -> None
+⋮----
+parsed = BashParser().parse('echo `date`\n')
+⋮----
+def test_process_substitution_subparser() -> None
+⋮----
+parsed = BashParser().parse('diff <(ls dir1) <(ls dir2)\n')
+⋮----
+process_nodes = [record for record in commands[0].subparses if record.kind == 'process_substitution_in']
+⋮----
+def test_simple_heredoc_subparser() -> None
+⋮----
+parsed = BashParser().parse('cat <<EOF\necho hi\nEOF\n')
+⋮----
+heredocs = [record for record in commands[0].subparses if record.kind == 'heredoc']
+⋮----
+def test_quoted_heredoc_stays_literal() -> None
+⋮----
+parsed = BashParser().parse("cat <<'EOF'\necho hi\nEOF\n")
+</file>
+
+<file path="benchmark.py">
+def main() -> None
+⋮----
+cli = argparse.ArgumentParser(description="Benchmark the minimal Bash parser.")
+⋮----
+args = cli.parse_args()
+⋮----
+parser = BashParser()
+parsed = parser.parse_file(args.path)
+⋮----
+started = perf_counter()
+commands = extract_commands(parsed)
+elapsed_ms = (perf_counter() - started) * 1000
+</file>
+
+<file path="extractor.py">
+@dataclass(slots=True)
+class RedirectRecord
+⋮----
+operator: str
+fd: str | None
+target: str | None
+⋮----
+@dataclass(slots=True)
+class CommandRecord
+⋮----
+name: str | None
+args: list[str]
+redirects: list[RedirectRecord]
+assignments: list[str]
+wrappers: list[str]
+source_span: dict[str, int | None]
+raw_node: str
+subparses: list[SubParseRecord]
+⋮----
+def to_dict(self) -> dict[str, Any]
+⋮----
+class CommandExtractor(Visitor)
+⋮----
+ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\+=|=).*$")
+⋮----
+def __init__(self, result: ParseResult) -> None
+⋮----
+def simple_command(self, tree: Tree) -> None
+⋮----
+words: list[str] = []
+assignments: list[str] = []
+redirects: list[RedirectRecord] = []
+subparses: list[SubParseRecord] = []
+⋮----
+parts = [child for child in tree.children if isinstance(child, Tree)]
+index = 0
+⋮----
+part = parts[index]
+payload = self._unwrap_command_part(part)
+⋮----
+value = self._flatten_tree(node)
+⋮----
+redirect_node = self._unwrap_command_part(parts[index + 1])[1]
+⋮----
+command_name = words[0] if words else None
+args = words[1:] if len(words) > 1 else []
+meta = tree.meta
+⋮----
+def visit_topdown(self, tree: Tree) -> None
+⋮----
+def _unwrap_command_part(self, tree: Tree) -> tuple[str, Tree] | None
+⋮----
+node = tree
+⋮----
+node = node.children[0]
+⋮----
+def _flatten_redirect(self, tree: Tree, fd_override: str | None = None) -> RedirectRecord
+⋮----
+fd = fd_override
+operator = None
+target = None
+⋮----
+fd = child.value
+⋮----
+operator = child.value
+⋮----
+target = self._flatten_tree(child)
+⋮----
+def _subparses_for_node(self, value: str, node: Tree) -> list[SubParseRecord]
+⋮----
+def _subparses_for_redirect(self, node: Tree) -> list[SubParseRecord]
+⋮----
+records: list[SubParseRecord] = []
+⋮----
+target_text = None
+target_node = None
+⋮----
+target_node = child
+target_text = self._flatten_tree(child)
+⋮----
+record = self._subparsers.build_heredoc_record(self.result.heredocs[self._heredoc_index])
+⋮----
+def _flatten_tree(self, tree: Tree) -> str
+⋮----
+def _collect_tokens(self, node: Tree) -> list[str]
+⋮----
+items: list[str] = []
+⋮----
+def _is_adjacent(self, left: Tree, right: Tree) -> bool
+⋮----
+def extract_commands(result: ParseResult) -> list[CommandRecord]
+⋮----
+extractor = CommandExtractor(result)
+⋮----
+def main() -> None
+⋮----
+cli = argparse.ArgumentParser(description="Extract command records from a shell script.")
+⋮----
+args = cli.parse_args()
+⋮----
+parsed = BashParser().parse_file(args.path)
+commands = extract_commands(parsed)
+</file>
+
+<file path="parser.py">
+GRAMMAR_PATH = Path(__file__).parent / "grammar" / "bash_minimal.lark"
+HEREDOC_PATTERN = re.compile(r"<<-?\s*(?P<quote>['\"]?)(?P<delimiter>[A-Za-z_][A-Za-z0-9_]*)(?P=quote)")
+⋮----
+@dataclass(slots=True)
+class HereDocSource
+⋮----
+operator: str
+delimiter: str
+body: str
+start_line: int
+end_line: int
+delimiter_line: int
+quoted: bool
+⋮----
+@dataclass(slots=True)
+class ParseResult
+⋮----
+tree: Tree
+elapsed_ms: float
+source_path: Optional[Path] = None
+source_text: str = ""
+parsed_text: str = ""
+heredocs: list[HereDocSource] = field(default_factory=list)
+⋮----
+class BashParser
+⋮----
+def __init__(self) -> None
+⋮----
+def parse(self, text: str, source_path: Optional[str | Path] = None) -> ParseResult
+⋮----
+prepared = self._prepare_source(text)
+started = perf_counter()
+tree = self._parser.parse(prepared["parsed_text"])
+elapsed_ms = (perf_counter() - started) * 1000
+⋮----
+def parse_file(self, path: str | Path) -> ParseResult
+⋮----
+file_path = Path(path)
+⋮----
+def _prepare_source(self, text: str) -> dict[str, str | list[HereDocSource]]
+⋮----
+lines = text.splitlines(keepends=True)
+output: list[str] = []
+heredocs: list[HereDocSource] = []
+index = 0
+⋮----
+line = lines[index]
+⋮----
+match = HEREDOC_PATTERN.search(line)
+⋮----
+operator = "<<-" if "<<-" in match.group(0) else "<<"
+delimiter = match.group("delimiter")
+quoted = bool(match.group("quote"))
+body_lines: list[str] = []
+body_start_line = index + 2
+⋮----
+current = lines[index]
+body_candidate = current.rstrip("\n")
+compare_value = body_candidate.lstrip("\t") if operator == "<<-" else body_candidate
+⋮----
+def main() -> None
+⋮----
+cli = argparse.ArgumentParser(description="Parse a shell script with the minimal Lark grammar.")
+⋮----
+args = cli.parse_args()
+⋮----
+result = BashParser().parse_file(args.path)
+</file>
+
+<file path="subparsers.py">
+GRAMMAR_PATH = Path(__file__).parent / "grammar" / "subparsers.lark"
+⋮----
+@dataclass(slots=True)
+class SubParseRecord
+⋮----
+kind: str
+raw_text: str
+source_span: dict[str, int | None]
+tree_pretty: str
+commands: list[CommandRecord]
+delimiter: str | None = None
+expansion_enabled: bool | None = None
+⋮----
+def to_dict(self) -> dict[str, object]
+⋮----
+class NestedSubstitutionTransformer(Transformer)
+⋮----
+def __init__(self, manager: SubParserManager, base_line: int, base_column: int) -> None
+⋮----
+def start(self, children: list[Any]) -> list[SubParseRecord]
+⋮----
+def text(self, children: list[Any]) -> str
+⋮----
+def bt_text(self, children: list[Any]) -> str
+⋮----
+def escaped_backtick(self, children: list[Any]) -> str
+⋮----
+def parenthesized(self, children: list[Any]) -> str
+⋮----
+@v_args(tree=True)
+    def command_substitution(self, tree: Tree) -> SubParseRecord
+⋮----
+@v_args(tree=True)
+    def process_substitution_in(self, tree: Tree) -> SubParseRecord
+⋮----
+@v_args(tree=True)
+    def process_substitution_out(self, tree: Tree) -> SubParseRecord
+⋮----
+@v_args(tree=True)
+    def backticks(self, tree: Tree) -> SubParseRecord
+⋮----
+def _build_record(self, kind: str, tree: Tree) -> SubParseRecord
+⋮----
+raw_text = self._flatten(tree.children)
+payload = self._flatten(tree.children[1:-1])
+parsed = self.manager._parser.parse(payload)
+commands = self.manager._extract_commands(parsed)
+⋮----
+def _column_offset(self, line: int, column: int) -> int
+⋮----
+def _flatten(self, items: list[Any]) -> str
+⋮----
+flattened: list[str] = []
+⋮----
+class SubParserManager
+⋮----
+def __init__(self) -> None
+⋮----
+def extract_for_text(self, text: str, start_line: int, start_column: int) -> list[SubParseRecord]
+⋮----
+tree = self._fragment_parser.parse(text)
+transformer = NestedSubstitutionTransformer(self, start_line, start_column)
+⋮----
+def build_heredoc_record(self, heredoc: HereDocSource) -> SubParseRecord | None
+⋮----
+parsed = self._parser.parse(heredoc.body)
+commands = self._extract_commands(parsed)
+⋮----
+def _extract_commands(self, parsed: ParseResult) -> list[CommandRecord]
+</file>
+
+</files>
